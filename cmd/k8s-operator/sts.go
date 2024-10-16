@@ -136,6 +136,8 @@ type tailscaleSTSConfig struct {
 
 	proxyType string
 
+	ControlURL string
+
 	// Connector specifies a configuration of a Connector instance if that's
 	// what this StatefulSet should be created for.
 	Connector *connector
@@ -209,6 +211,10 @@ func (a *tailscaleSTSReconciler) Provision(ctx context.Context, logger *zap.Suga
 	}
 
 	secretName, tsConfigHash, _, err := a.createOrGetSecret(ctx, logger, sts, hsvc)
+	if a.controlUrl != "" {
+		sts.ControlURL = a.controlUrl
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to create or get API key secret: %w", err)
 	}
