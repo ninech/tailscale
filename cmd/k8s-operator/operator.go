@@ -121,6 +121,8 @@ func initTSNet(zlog *zap.SugaredLogger) (*tsnet.Server, *tailscale.Client) {
 	var (
 		clientIDPath     = defaultEnv("CLIENT_ID_FILE", "")
 		clientSecretPath = defaultEnv("CLIENT_SECRET_FILE", "")
+		tokenURL         = defaultEnv("TOKEN_URL", "https://login.tailscale.com/api/v2/oauth/token")
+		controlURL       = defaultEnv("CONTROL_URL", "")
 		hostname         = defaultEnv("OPERATOR_HOSTNAME", "tailscale-operator")
 		kubeSecret       = defaultEnv("OPERATOR_SECRET", "")
 		operatorTags     = defaultEnv("OPERATOR_INITIAL_TAGS", "tag:k8s-operator")
@@ -140,15 +142,19 @@ func initTSNet(zlog *zap.SugaredLogger) (*tsnet.Server, *tailscale.Client) {
 	credentials := clientcredentials.Config{
 		ClientID:     string(clientID),
 		ClientSecret: string(clientSecret),
-		TokenURL:     "https://login.tailscale.com/api/v2/oauth/token",
+		TokenURL:     tokenURL,
 	}
 	tsClient := tailscale.NewClient("-", nil)
+	if controlURL != "" {
+		tsClient.BaseURL = controlURL
+	}
 	tsClient.UserAgent = "tailscale-k8s-operator"
 	tsClient.HTTPClient = credentials.Client(context.Background())
 
 	s := &tsnet.Server{
-		Hostname: hostname,
-		Logf:     zlog.Named("tailscaled").Debugf,
+		ControlURL: controlURL,
+		Hostname:   hostname,
+		Logf:       zlog.Named("tailscaled").Debugf,
 	}
 	if kubeSecret != "" {
 		st, err := kubestore.New(logger.Discard, kubeSecret)
@@ -271,6 +277,7 @@ func runReconcilers(opts reconcilerOpts) {
 		proxyImage:             opts.proxyImage,
 		proxyPriorityClassName: opts.proxyPriorityClassName,
 		tsFirewallMode:         opts.proxyFirewallMode,
+		controlUrl:             opts.tsServer.ControlURL,
 	}
 	err = builder.
 		ControllerManagedBy(mgr).
