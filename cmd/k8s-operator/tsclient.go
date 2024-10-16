@@ -28,7 +28,7 @@ const (
 	oidcJWTPath    = "/var/run/secrets/tailscale/serviceaccount/token"
 )
 
-func newTSClient(logger *zap.SugaredLogger, clientID, clientIDPath, clientSecretPath, loginServer string) (*tailscale.Client, error) {
+func newTSClient(logger *zap.SugaredLogger, clientID, clientIDPath, clientSecretPath, loginServer, customTokenURL string) (*tailscale.Client, error) {
 	baseURL := ipn.DefaultControlURL
 	if loginServer != "" {
 		baseURL = loginServer
@@ -45,10 +45,14 @@ func newTSClient(logger *zap.SugaredLogger, clientID, clientIDPath, clientSecret
 		if err != nil {
 			return nil, fmt.Errorf("reading client secret %q: %w", clientSecretPath, err)
 		}
+		tokenURL := fmt.Sprintf("%s%s", baseURL, "/api/v2/oauth/token")
+		if customTokenURL != "" {
+			tokenURL = customTokenURL
+		}
 		credentials := clientcredentials.Config{
 			ClientID:     string(id),
 			ClientSecret: string(secret),
-			TokenURL:     fmt.Sprintf("%s%s", baseURL, "/api/v2/oauth/token"),
+			TokenURL:     tokenURL,
 		}
 		tokenSrc := credentials.TokenSource(context.Background())
 		httpClient = oauth2.NewClient(context.Background(), tokenSrc)

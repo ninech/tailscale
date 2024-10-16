@@ -36,7 +36,7 @@ func TestNewStaticClient(t *testing.T) {
 	}
 
 	srv := testAPI(t, 3600)
-	cl, err := newTSClient(zap.NewNop().Sugar(), "", clientIDPath, clientSecretPath, srv.URL)
+	cl, err := newTSClient(zap.NewNop().Sugar(), "", clientIDPath, clientSecretPath, srv.URL, "")
 	if err != nil {
 		t.Fatalf("error creating Tailscale client: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestNewWorkloadIdentityClient(t *testing.T) {
 	// 5 seconds is within expiryDelta leeway, so the access token will
 	// immediately be considered expired and get refreshed on each access.
 	srv := testAPI(t, 5)
-	cl, err := newTSClient(zap.NewNop().Sugar(), "test-client-id", "", "", srv.URL)
+	cl, err := newTSClient(zap.NewNop().Sugar(), "test-client-id", "", "", srv.URL, "")
 	if err != nil {
 		t.Fatalf("error creating Tailscale client: %v", err)
 	}
