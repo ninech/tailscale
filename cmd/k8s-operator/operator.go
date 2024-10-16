@@ -179,6 +179,7 @@ func initTSNet(zlog *zap.SugaredLogger, loginServer string) (*tsnet.Server, *tai
 		clientID         = defaultEnv("CLIENT_ID", "")          // Used for workload identity federation.
 		clientIDPath     = defaultEnv("CLIENT_ID_FILE", "")     // Used for static client credentials.
 		clientSecretPath = defaultEnv("CLIENT_SECRET_FILE", "") // Used for static client credentials.
+		customTokenURL   = defaultEnv("TOKEN_URL", "")
 		hostname         = defaultEnv("OPERATOR_HOSTNAME", "tailscale-operator")
 		kubeSecret       = defaultEnv("OPERATOR_SECRET", "")
 		operatorTags     = defaultEnv("OPERATOR_INITIAL_TAGS", "tag:k8s-operator")
@@ -189,7 +190,7 @@ func initTSNet(zlog *zap.SugaredLogger, loginServer string) (*tsnet.Server, *tai
 		startlog.Fatalf("CLIENT_ID_FILE and CLIENT_SECRET_FILE must be set") // TODO(tomhjp): error message can mention WIF once it's publicly available.
 	}
 
-	tsc, err := newTSClient(zlog.Named("ts-api-client"), clientID, clientIDPath, clientSecretPath, loginServer)
+	tsc, err := newTSClient(zlog.Named("ts-api-client"), clientID, clientIDPath, clientSecretPath, loginServer, customTokenURL)
 	if err != nil {
 		startlog.Fatalf("error creating Tailscale client: %v", err)
 	}
