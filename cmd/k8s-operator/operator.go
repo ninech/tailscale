@@ -146,6 +146,7 @@ func initTSNet(zlog *zap.SugaredLogger, loginServer string) (*tsnet.Server, tsCl
 	var (
 		clientIDPath     = defaultEnv("CLIENT_ID_FILE", "")
 		clientSecretPath = defaultEnv("CLIENT_SECRET_FILE", "")
+		customTokenURL   = defaultEnv("TOKEN_URL", "")
 		hostname         = defaultEnv("OPERATOR_HOSTNAME", "tailscale-operator")
 		kubeSecret       = defaultEnv("OPERATOR_SECRET", "")
 		operatorTags     = defaultEnv("OPERATOR_INITIAL_TAGS", "tag:k8s-operator")
@@ -154,7 +155,7 @@ func initTSNet(zlog *zap.SugaredLogger, loginServer string) (*tsnet.Server, tsCl
 	if clientIDPath == "" || clientSecretPath == "" {
 		startlog.Fatalf("CLIENT_ID_FILE and CLIENT_SECRET_FILE must be set")
 	}
-	tsc, err := newTSClient(context.Background(), clientIDPath, clientSecretPath, loginServer)
+	tsc, err := newTSClient(context.Background(), clientIDPath, clientSecretPath, loginServer, customTokenURL)
 	if err != nil {
 		startlog.Fatalf("error creating Tailscale client: %v", err)
 	}
