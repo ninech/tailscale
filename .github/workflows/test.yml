@@ -587,7 +587,6 @@ jobs:
       - android
       - test
       - windows
-      - vm
       - cross
       - ios
       - wasm
