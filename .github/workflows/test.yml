@@ -943,8 +943,6 @@ jobs:
       - android
       - test
       - windows
-      - macos
-      - vm
       - cross
       - ios
       - wasm
