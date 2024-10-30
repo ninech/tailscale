@@ -137,6 +137,7 @@ func initTSNet(zlog *zap.SugaredLogger) (*tsnet.Server, tsClient) {
 	var (
 		clientIDPath     = defaultEnv("CLIENT_ID_FILE", "")
 		clientSecretPath = defaultEnv("CLIENT_SECRET_FILE", "")
+		controlURL       = defaultEnv("CONTROL_URL", "")
 		hostname         = defaultEnv("OPERATOR_HOSTNAME", "tailscale-operator")
 		kubeSecret       = defaultEnv("OPERATOR_SECRET", "")
 		operatorTags     = defaultEnv("OPERATOR_INITIAL_TAGS", "tag:k8s-operator")
@@ -149,10 +150,13 @@ func initTSNet(zlog *zap.SugaredLogger) (*tsnet.Server, tsClient) {
 	if err != nil {
 		startlog.Fatalf("error creating Tailscale client: %v", err)
 	}
+
 	s := &tsnet.Server{
-		Hostname: hostname,
-		Logf:     zlog.Named("tailscaled").Debugf,
+		ControlURL: controlURL,
+		Hostname:   hostname,
+		Logf:       zlog.Named("tailscaled").Debugf,
 	}
+
 	if p := os.Getenv("TS_PORT"); p != "" {
 		port, err := strconv.ParseUint(p, 10, 16)
 		if err != nil {
@@ -292,6 +296,7 @@ func runReconcilers(opts reconcilerOpts) {
 		proxyImage:             opts.proxyImage,
 		proxyPriorityClassName: opts.proxyPriorityClassName,
 		tsFirewallMode:         opts.proxyFirewallMode,
+		controlUrl:             opts.tsServer.ControlURL,
 	}
 	err = builder.
 		ControllerManagedBy(mgr).
