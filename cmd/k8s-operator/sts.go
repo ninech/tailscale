@@ -122,6 +122,7 @@ type tailscaleSTSConfig struct {
 	Hostname string
 	Tags     []string // if empty, use defaultTags
 
+	ControlURL string
 	// Connector specifies a configuration of a Connector instance if that's
 	// what this StatefulSet should be created for.
 	Connector *connector
@@ -150,6 +151,7 @@ type tailscaleSTSReconciler struct {
 	proxyImage             string
 	proxyPriorityClassName string
 	tsFirewallMode         string
+	controlUrl             string
 }
 
 func (sts tailscaleSTSReconciler) validate() error {
@@ -185,6 +187,10 @@ func (a *tailscaleSTSReconciler) Provision(ctx context.Context, logger *zap.Suga
 		}
 	}
 	sts.ProxyClass = proxyClass
+
+	if a.controlUrl != "" {
+		sts.ControlURL = a.controlUrl
+	}
 
 	secretName, tsConfigHash, configs, err := a.createOrGetSecret(ctx, logger, sts, hsvc)
 	if err != nil {
@@ -830,6 +836,11 @@ func tailscaledConfig(stsC *tailscaleSTSConfig, newAuthkey string, oldSecret *co
 		}
 		conf.AuthKey = key
 	}
+
+	if stsC.ControlURL != "" {
+		conf.ServerURL = &stsC.ControlURL
+	}
+
 	capVerConfigs := make(map[tailcfg.CapabilityVersion]ipn.ConfigVAlpha)
 	capVerConfigs[95] = *conf
 	// legacy config should not contain NoStatefulFiltering field.
