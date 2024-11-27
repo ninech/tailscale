@@ -1,0 +1,45 @@
+name: Publish Dev Operator
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*.*.*-*'
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish k8s-operator image
+        env:
+          REPO: ghcr.io/${{ github.repository_owner }}/tailscale-k8s-operator
+          TAGS: ${{ github.ref_name }}
+        run: |
+          echo "Building and publishing k8s-operator to ${REPO} with tags ${TAGS}"
+          TAGS="${TAGS}" REPOS=${REPO} PLATFORM=${PLATFORM} PUSH=true TARGET=operator ./build_docker.sh 
+      - name: Build and publish nameserver image
+        env:
+          REPO: ghcr.io/${{ github.repository_owner }}/tailscale-k8s-nameserver
+          TAGS: ${{ github.ref_name }}
+        run: |
+          echo "Building and publishing k8s-nameserver to ${REPO} with tags ${TAGS}"
+          TAGS="${TAGS}" REPOS=${REPO} PLATFORM=${PLATFORM} PUSH=true TARGET=k8s-nameserver ./build_docker.sh 
+      - name: Build and publish client image
+        env:
+          REPO: ghcr.io/${{ github.repository_owner }}/tailscale
+          TAGS: ${{ github.ref_name }}
+        run: |
+          echo "Building and publishing tailscale client to ${REPO} with tags ${TAGS}"
+          TAGS="${TAGS}" REPOS=${REPO} PLATFORM=${PLATFORM} PUSH=true TARGET=client ./build_docker.sh 
