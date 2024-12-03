@@ -83,6 +83,11 @@ spec:
               required:
                 - nameserver
               properties:
+                domain:
+                  description: |-
+                    Domain is the domain for which DNS entries will be resolved. If left
+                    empty, the default of the k8s-nameserver will be used.
+                  type: string
                 nameserver:
                   description: |-
                     Configuration for a nameserver that can resolve ts.net DNS names

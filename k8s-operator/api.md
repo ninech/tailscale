@@ -230,6 +230,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `nameserver` _[Nameserver](#nameserver)_ | Configuration for a nameserver that can resolve ts.net DNS names<br />associated with in-cluster proxies for Tailscale egress Services and<br />Tailscale Ingresses. The operator will always deploy this nameserver<br />when a DNSConfig is applied. |  |  |
+| `domain` _string_ | Domain is the domain for which DNS entries will be resolved. If left<br />empty, the default of the k8s-nameserver will be used. |  |  |
 
 
 #### DNSConfigStatus
