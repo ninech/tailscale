@@ -193,6 +193,9 @@ func (a *NameserverReconciler) maybeProvision(ctx context.Context, tsDNSCfg *tsa
 		dCfg.affinity = tsDNSCfg.Spec.Nameserver.Pod.Affinity
 		dCfg.nodeSelector = tsDNSCfg.Spec.Nameserver.Pod.NodeSelector
 	}
+	if tsDNSCfg.Spec.Domain != "" {
+		dCfg.domain = tsDNSCfg.Spec.Domain
+	}
 
 	for _, deployable := range []deployable{saDeployable, deployDeployable, svcDeployable, cmDeployable} {
 		if err := deployable.updateObj(ctx, dCfg, a.Client); err != nil {
@@ -229,6 +232,7 @@ type deployConfig struct {
 	tolerations  []corev1.Toleration
 	affinity     *corev1.Affinity
 	nodeSelector map[string]string
+	domain       string
 }
 
 var (
@@ -250,6 +254,9 @@ var (
 			}
 			d.Spec.Replicas = new(cfg.replicas)
 			d.Spec.Template.Spec.Containers[0].Image = fmt.Sprintf("%s:%s", cfg.imageRepo, cfg.imageTag)
+			if cfg.domain != "" {
+				d.Spec.Template.Spec.Containers[0].Args = []string{"-domain", cfg.domain}
+			}
 			d.ObjectMeta.Namespace = cfg.namespace
 			d.ObjectMeta.Labels = cfg.labels
 			d.ObjectMeta.OwnerReferences = cfg.ownerRefs
