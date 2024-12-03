@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -26,9 +27,12 @@ import (
 	"tailscale.com/util/dnsname"
 )
 
+var (
+	// domain is the DNS domain that this nameserver has registered a handler for.
+	domain = flag.String("domain", "ts.net", "the DNS domain to serve records for")
+)
+
 const (
-	// tsNetDomain is the domain that this DNS nameserver has registered a handler for.
-	tsNetDomain = "ts.net"
 	// addr is the the address that the UDP and TCP listeners will listen on.
 	addr = ":1053"
 
@@ -40,7 +44,7 @@ const (
 )
 
 // nameserver is a simple nameserver that responds to DNS queries for A records
-// for ts.net domain names over UDP or TCP. It serves DNS responses from
+// for the names of the given domain over UDP or TCP. It serves DNS responses from
 // in-memory IPv4 host records. It is intended to be deployed on Kubernetes with
 // a ConfigMap mounted at /config that should contain the host records. It
 // dynamically reconfigures its in-memory mappings as the contents of the
@@ -78,11 +82,11 @@ func main() {
 	// reset when the configuration changes.
 	ns.runRecordsReconciler(ctx)
 
-	// Register a DNS server handle for ts.net domain names. Not having a
+	// Register a DNS server handle for names of the domain. Not having a
 	// handle registered for any other domain names is how we enforce that
-	// this nameserver can only be used for ts.net domains - querying any
+	// this nameserver can only be used for the given domain - querying any
 	// other domain names returns Rcode Refused.
-	dns.HandleFunc(tsNetDomain, ns.handleFunc())
+	dns.HandleFunc(*domain, ns.handleFunc())
 
 	// Listen for DNS queries over UDP and TCP.
 	udpSig := make(chan os.Signal)
