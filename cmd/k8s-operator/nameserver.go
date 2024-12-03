@@ -177,6 +177,9 @@ func (a *NameserverReconciler) maybeProvision(ctx context.Context, tsDNSCfg *tsa
 	if tsDNSCfg.Spec.Nameserver.Image != nil && tsDNSCfg.Spec.Nameserver.Image.Tag != "" {
 		dCfg.imageTag = tsDNSCfg.Spec.Nameserver.Image.Tag
 	}
+	if tsDNSCfg.Spec.Domain != "" {
+		dCfg.domain = tsDNSCfg.Spec.Domain
+	}
 	for _, deployable := range []deployable{saDeployable, deployDeployable, svcDeployable, cmDeployable} {
 		if err := deployable.updateObj(ctx, dCfg, a.Client); err != nil {
 			return fmt.Errorf("error reconciling %s: %w", deployable.kind, err)
@@ -207,6 +210,7 @@ type deployConfig struct {
 	labels    map[string]string
 	ownerRefs []metav1.OwnerReference
 	namespace string
+	domain    string
 }
 
 var (
@@ -227,6 +231,9 @@ var (
 				return fmt.Errorf("error unmarshalling Deployment yaml: %w", err)
 			}
 			d.Spec.Template.Spec.Containers[0].Image = fmt.Sprintf("%s:%s", cfg.imageRepo, cfg.imageTag)
+			if cfg.domain != "" {
+				d.Spec.Template.Spec.Containers[0].Args = []string{"-domain", cfg.domain}
+			}
 			d.ObjectMeta.Namespace = cfg.namespace
 			d.ObjectMeta.Labels = cfg.labels
 			d.ObjectMeta.OwnerReferences = cfg.ownerRefs
