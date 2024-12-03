@@ -372,6 +372,11 @@ spec:
                             More info:
                             https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-status
                         properties:
+                            domain:
+                                description: |-
+                                    Domain is the domain for which DNS entries will be resolved. If left
+                                    empty, the default of the k8s-nameserver will be used.
+                                type: string
                             nameserver:
                                 description: |-
                                     Configuration for a nameserver that can resolve ts.net DNS names

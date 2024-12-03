@@ -76,6 +76,10 @@ type DNSConfigSpec struct {
 	// Tailscale Ingresses. The operator will always deploy this nameserver
 	// when a DNSConfig is applied.
 	Nameserver *Nameserver `json:"nameserver"`
+	// Domain is the domain for which DNS entries will be resolved. If left
+	// empty, the default of the k8s-nameserver will be used.
+	// +optional
+	Domain string `json:"domain"`
 }
 
 type Nameserver struct {
