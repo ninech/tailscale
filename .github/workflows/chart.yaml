@@ -1,0 +1,38 @@
+name: package-helm-chart
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*.*.*-*'
+  workflow_dispatch:
+
+jobs:
+  package-and-push-helm-chart:
+    permissions:
+      contents: read
+      packages: write
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.2.2
+
+      - name: Set environment variables
+        id: set-variables
+        run: |
+          echo "REPOSITORY=ghcr.io/$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build, package and push helm chart
+        run: |
+          ./tool/go run cmd/k8s-operator/generate/main.go helmcrd
+          ./tool/helm package --app-version="${GITHUB_REF}" --version=${GITHUB_REF} './cmd/k8s-operator/deploy/chart'
+          ./tool/helm push ./tailscale-operator-${{ $GITHUB_REF }}.tgz oci://${{ steps.set-variables.outputs.REPOSITORY }}/charts
