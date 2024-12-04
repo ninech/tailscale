@@ -111,3 +111,15 @@ apiServerProxyConfig:
   mode: "false" # "true", "false", "noauth"
 
 imagePullSecrets: []
+
+# dnsConfig allows to deploy the k8s-nameserver which allows to use magicDNS
+# names.
+dnsConfig:
+  enabled: false
+  image:
+    repo: "tailscale/k8s-nameserver"
+    ## tag can be used to overwrite the tag of the container image to be used.
+    ## By default the appVersion will be used. 
+    tag: ""
+  ## domain allows to customize the magicDNS domain.
+  domain: "ts.net"
