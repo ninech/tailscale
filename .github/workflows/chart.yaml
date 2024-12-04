@@ -35,4 +35,4 @@ jobs:
         run: |
           ./tool/go run cmd/k8s-operator/generate/main.go helmcrd
           ./tool/helm package --app-version="${GITHUB_REF}" --version=${GITHUB_REF} './cmd/k8s-operator/deploy/chart'
-          ./tool/helm push ./tailscale-operator-${{ $GITHUB_REF }}.tgz oci://${{ steps.set-variables.outputs.REPOSITORY }}/charts
+          ./tool/helm push ./tailscale-operator-${GITHUB_REF}.tgz oci://${{ steps.set-variables.outputs.REPOSITORY }}/charts
