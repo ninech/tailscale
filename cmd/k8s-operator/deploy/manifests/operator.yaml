@@ -395,6 +395,13 @@ spec:
                                                 type: string
                                         type: object
                                 type: object
+                            podLabels:
+                                additionalProperties:
+                                    type: string
+                                description: |-
+                                    PodLabels are the labels which will be attached to the nameserver
+                                    pod. They can be used to define network policies.
+                                type: object
                         required:
                             - nameserver
                         type: object
