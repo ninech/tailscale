@@ -106,6 +106,13 @@ spec:
                         tag:
                           description: Tag defaults to unstable.
                           type: string
+                podLabels:
+                  description: |-
+                    PodLabels are the labels which will be attached to the nameserver
+                    pod. They can be used to define network policies.
+                  type: object
+                  additionalProperties:
+                    type: string
             status:
               description: |-
                 Status describes the status of the DNSConfig. This is set

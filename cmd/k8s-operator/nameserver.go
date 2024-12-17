@@ -169,11 +169,12 @@ func nameserverResourceLabels(name, namespace string) map[string]string {
 }
 
 func (a *NameserverReconciler) maybeProvision(ctx context.Context, tsDNSCfg *tsapi.DNSConfig, logger *zap.SugaredLogger) error {
-	labels := nameserverResourceLabels(tsDNSCfg.Name, a.tsNamespace)
+	resourceLabels := nameserverResourceLabels(tsDNSCfg.Name, a.tsNamespace)
 	dCfg := &deployConfig{
 		ownerRefs: []metav1.OwnerReference{*metav1.NewControllerRef(tsDNSCfg, tsapi.SchemeGroupVersion.WithKind("DNSConfig"))},
 		namespace: a.tsNamespace,
-		labels:    labels,
+		labels:    resourceLabels,
+		podLabels: tsDNSCfg.Spec.PodLabels,
 		imageRepo: defaultNameserverImageRepo,
 		imageTag:  defaultNameserverImageTag,
 	}
@@ -214,6 +215,7 @@ type deployConfig struct {
 	imageRepo string
 	imageTag  string
 	labels    map[string]string
+	podLabels map[string]string
 	ownerRefs []metav1.OwnerReference
 	namespace string
 	domain    string
@@ -243,6 +245,13 @@ var (
 			d.ObjectMeta.Namespace = cfg.namespace
 			d.ObjectMeta.Labels = cfg.labels
 			d.ObjectMeta.OwnerReferences = cfg.ownerRefs
+			if d.Spec.Template.Labels == nil {
+				d.Spec.Template.Labels = make(map[string]string)
+			}
+			for key, value := range cfg.podLabels {
+				d.Spec.Template.Labels[key] = value
+			}
+
 			updateF := func(oldD *appsv1.Deployment) {
 				oldD.Spec = d.Spec
 			}

@@ -80,6 +80,10 @@ type DNSConfigSpec struct {
 	// empty, the default of the k8s-nameserver will be used.
 	// +optional
 	Domain string `json:"domain"`
+	// PodLabels are the labels which will be attached to the nameserver
+	// pod. They can be used to define network policies.
+	// +optional
+	PodLabels map[string]string `json:"podLabels,omitempty"`
 }
 
 type Nameserver struct {
