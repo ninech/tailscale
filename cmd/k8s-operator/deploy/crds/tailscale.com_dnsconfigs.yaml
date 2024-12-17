@@ -105,6 +105,7 @@ spec:
                         tag:
                           description: Tag defaults to unstable.
                           type: string
+<<<<<<< HEAD
                     pod:
                       description: Pod configuration.
                       type: object
@@ -1038,6 +1039,15 @@ spec:
                         clusterIP:
                           description: ClusterIP sets the static IP of the service used by the nameserver.
                           type: string
+=======
+                podLabels:
+                  description: |-
+                    PodLabels are the labels which will be attached to the nameserver
+                    pod. They can be used to define network policies.
+                  type: object
+                  additionalProperties:
+                    type: string
+>>>>>>> 82ca045de (allow to attach labels to the nameserver pod)
             status:
               description: |-
                 Status describes the status of the DNSConfig. This is set
