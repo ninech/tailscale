@@ -168,13 +168,33 @@ func nameserverResourceLabels(name, namespace string) map[string]string {
 	return labels
 }
 
+// mergeEnvVars merges `source` with `other` while prioritizing the values from
+// `other` if there a duplicate environment variables found.
+func mergeEnvVars(source []corev1.EnvVar, other []corev1.EnvVar) []corev1.EnvVar {
+	merged := make([]corev1.EnvVar, len(other))
+	copy(merged, source)
+
+	// create a map to track existing env var names in `other`
+	existing := make(map[string]bool, len(other))
+	for _, env := range other {
+		existing[env.Name] = true
+	}
+	// now we add the missing env variable names from source if they do not
+	// already exist
+	for _, env := range source {
+		if !existing[env.Name] {
+			merged = append(merged, env)
+		}
+	}
+	return merged
+}
+
 func (a *NameserverReconciler) maybeProvision(ctx context.Context, tsDNSCfg *tsapi.DNSConfig, logger *zap.SugaredLogger) error {
 	resourceLabels := nameserverResourceLabels(tsDNSCfg.Name, a.tsNamespace)
 	dCfg := &deployConfig{
 		ownerRefs: []metav1.OwnerReference{*metav1.NewControllerRef(tsDNSCfg, tsapi.SchemeGroupVersion.WithKind("DNSConfig"))},
 		namespace: a.tsNamespace,
 		labels:    resourceLabels,
-		podLabels: tsDNSCfg.Spec.PodLabels,
 		imageRepo: defaultNameserverImageRepo,
 		imageTag:  defaultNameserverImageTag,
 	}
@@ -184,9 +204,12 @@ func (a *NameserverReconciler) maybeProvision(ctx context.Context, tsDNSCfg *tsa
 	if tsDNSCfg.Spec.Nameserver.Image != nil && tsDNSCfg.Spec.Nameserver.Image.Tag != "" {
 		dCfg.imageTag = tsDNSCfg.Spec.Nameserver.Image.Tag
 	}
-	if tsDNSCfg.Spec.Domain != "" {
-		dCfg.domain = tsDNSCfg.Spec.Domain
+	if len(tsDNSCfg.Spec.Nameserver.Cmd) > 0 {
+		dCfg.cmd = tsDNSCfg.Spec.Nameserver.Cmd
 	}
+	dCfg.env = tsDNSCfg.Spec.Nameserver.Env
+	dCfg.podLabels = tsDNSCfg.Spec.Nameserver.PodLabels
+
 	for _, deployable := range []deployable{saDeployable, deployDeployable, svcDeployable, cmDeployable} {
 		if err := deployable.updateObj(ctx, dCfg, a.Client); err != nil {
 			return fmt.Errorf("error reconciling %s: %w", deployable.kind, err)
@@ -216,9 +239,10 @@ type deployConfig struct {
 	imageTag  string
 	labels    map[string]string
 	podLabels map[string]string
+	cmd       []string
+	env       []corev1.EnvVar
 	ownerRefs []metav1.OwnerReference
 	namespace string
-	domain    string
 }
 
 var (
@@ -239,9 +263,6 @@ var (
 				return fmt.Errorf("error unmarshalling Deployment yaml: %w", err)
 			}
 			d.Spec.Template.Spec.Containers[0].Image = fmt.Sprintf("%s:%s", cfg.imageRepo, cfg.imageTag)
-			if cfg.domain != "" {
-				d.Spec.Template.Spec.Containers[0].Args = []string{"-domain", cfg.domain}
-			}
 			d.ObjectMeta.Namespace = cfg.namespace
 			d.ObjectMeta.Labels = cfg.labels
 			d.ObjectMeta.OwnerReferences = cfg.ownerRefs
@@ -251,6 +272,10 @@ var (
 			for key, value := range cfg.podLabels {
 				d.Spec.Template.Labels[key] = value
 			}
+			if len(cfg.cmd) > 0 {
+				d.Spec.Template.Spec.Containers[0].Command = cfg.cmd
+			}
+			d.Spec.Template.Spec.Containers[0].Env = mergeEnvVars(d.Spec.Template.Spec.Containers[0].Env, cfg.env)
 
 			updateF := func(oldD *appsv1.Deployment) {
 				oldD.Spec = d.Spec

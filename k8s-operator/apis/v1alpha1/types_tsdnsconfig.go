@@ -6,6 +6,7 @@
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -76,20 +77,23 @@ type DNSConfigSpec struct {
 	// Tailscale Ingresses. The operator will always deploy this nameserver
 	// when a DNSConfig is applied.
 	Nameserver *Nameserver `json:"nameserver"`
-	// Domain is the domain for which DNS entries will be resolved. If left
-	// empty, the default of the k8s-nameserver will be used.
-	// +optional
-	Domain string `json:"domain"`
-	// PodLabels are the labels which will be attached to the nameserver
-	// pod. They can be used to define network policies.
-	// +optional
-	PodLabels map[string]string `json:"podLabels,omitempty"`
 }
 
 type Nameserver struct {
 	// Nameserver image. Defaults to tailscale/k8s-nameserver:unstable.
 	// +optional
 	Image *NameserverImage `json:"image,omitempty"`
+	// Cmd can be used to overwrite the command used when running the nameserver image.
+	// +optional
+	Cmd []string `json:"cmd,omitempty"`
+	// Env can be used to pass environment variables to the nameserver
+	// container.
+	// +optional
+	Env []corev1.EnvVar `json:"env,omitempty"`
+	// PodLabels are the labels which will be attached to the nameserver
+	// pod. They can be used to define network policies.
+	// +optional
+	PodLabels map[string]string `json:"podLabels,omitempty"`
 }
 
 type NameserverImage struct {
