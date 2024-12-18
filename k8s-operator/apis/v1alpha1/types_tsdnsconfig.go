@@ -92,6 +92,17 @@ type Nameserver struct {
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	Replicas *int32 `json:"replicas,omitempty"`
+	// Cmd can be used to overwrite the command used when running the nameserver image.
+	// +optional
+	Cmd []string `json:"cmd,omitempty"`
+	// Env can be used to pass environment variables to the nameserver
+	// container.
+	// +optional
+	Env []corev1.EnvVar `json:"env,omitempty"`
+	// PodLabels are the labels which will be attached to the nameserver
+	// pod. They can be used to define network policies.
+	// +optional
+	PodLabels map[string]string `json:"podLabels,omitempty"`
 }
 
 type NameserverImage struct {

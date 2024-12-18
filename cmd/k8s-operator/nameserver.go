@@ -165,12 +165,30 @@ func nameserverResourceLabels(name, namespace string) map[string]string {
 	return labels
 }
 
+// mergeEnvVars merges `source` with `other` while prioritizing the values from
+// `other` if there a duplicate environment variables found.
+func mergeEnvVars(source []corev1.EnvVar, other []corev1.EnvVar) []corev1.EnvVar {
+	merged := make([]corev1.EnvVar, len(other))
+	copy(merged, source)
+
+	existing := make(map[string]bool, len(other))
+	for _, env := range other {
+		existing[env.Name] = true
+	}
+	for _, env := range source {
+		if !existing[env.Name] {
+			merged = append(merged, env)
+		}
+	}
+	return merged
+}
+
 func (a *NameserverReconciler) maybeProvision(ctx context.Context, tsDNSCfg *tsapi.DNSConfig) error {
-	labels := nameserverResourceLabels(tsDNSCfg.Name, a.tsNamespace)
+	resourceLabels := nameserverResourceLabels(tsDNSCfg.Name, a.tsNamespace)
 	dCfg := &deployConfig{
 		ownerRefs: []metav1.OwnerReference{*metav1.NewControllerRef(tsDNSCfg, tsapi.SchemeGroupVersion.WithKind("DNSConfig"))},
 		namespace: a.tsNamespace,
-		labels:    labels,
+		labels:    resourceLabels,
 		imageRepo: defaultNameserverImageRepo,
 		imageTag:  defaultNameserverImageTag,
 		replicas:  1,
@@ -193,6 +211,11 @@ func (a *NameserverReconciler) maybeProvision(ctx context.Context, tsDNSCfg *tsa
 		dCfg.affinity = tsDNSCfg.Spec.Nameserver.Pod.Affinity
 		dCfg.nodeSelector = tsDNSCfg.Spec.Nameserver.Pod.NodeSelector
 	}
+	if len(tsDNSCfg.Spec.Nameserver.Cmd) > 0 {
+		dCfg.cmd = tsDNSCfg.Spec.Nameserver.Cmd
+	}
+	dCfg.env = tsDNSCfg.Spec.Nameserver.Env
+	dCfg.podLabels = tsDNSCfg.Spec.Nameserver.PodLabels
 
 	for _, deployable := range []deployable{saDeployable, deployDeployable, svcDeployable, cmDeployable} {
 		if err := deployable.updateObj(ctx, dCfg, a.Client); err != nil {
@@ -223,6 +246,9 @@ type deployConfig struct {
 	imageRepo    string
 	imageTag     string
 	labels       map[string]string
+	podLabels    map[string]string
+	cmd          []string
+	env          []corev1.EnvVar
 	ownerRefs    []metav1.OwnerReference
 	namespace    string
 	clusterIP    string
@@ -256,6 +282,16 @@ var (
 			d.Spec.Template.Spec.Tolerations = cfg.tolerations
 			d.Spec.Template.Spec.Affinity = cfg.affinity
 			d.Spec.Template.Spec.NodeSelector = cfg.nodeSelector
+			if d.Spec.Template.Labels == nil {
+				d.Spec.Template.Labels = make(map[string]string)
+			}
+			for key, value := range cfg.podLabels {
+				d.Spec.Template.Labels[key] = value
+			}
+			if len(cfg.cmd) > 0 {
+				d.Spec.Template.Spec.Containers[0].Command = cfg.cmd
+			}
+			d.Spec.Template.Spec.Containers[0].Env = mergeEnvVars(d.Spec.Template.Spec.Containers[0].Env, cfg.env)
 			updateF := func(oldD *appsv1.Deployment) {
 				oldD.Spec = d.Spec
 			}

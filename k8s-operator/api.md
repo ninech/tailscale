@@ -450,6 +450,9 @@ _Appears in:_
 | `service` _[NameserverService](#nameserverservice)_ | Service configuration. |  |  |
 | `pod` _[NameserverPod](#nameserverpod)_ | Pod configuration. |  |  |
 | `replicas` _integer_ | Replicas specifies how many Pods to create. Defaults to 1. |  | Minimum: 0 <br /> |
+| `cmd` _string array_ | Cmd can be used to overwrite the command used when running the nameserver image. |  |  |
+| `env` _[EnvVar](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.3/#envvar-v1-core) array_ | Env can be used to pass environment variables to the nameserver<br />container. |  |  |
+| `podLabels` _object (keys:string, values:string)_ | PodLabels are the labels which will be attached to the nameserver<br />pod. They can be used to define network policies. |  |  |
 
 
 #### NameserverImage
