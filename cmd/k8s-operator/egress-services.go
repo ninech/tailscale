@@ -511,6 +511,7 @@ func (esr *egressSvcsReconciler) validateClusterResources(ctx context.Context, s
 		tsoperator.RemoveServiceCondition(svc, tsapi.EgressSvcConfigured)
 		return false, nil
 	}
+
 	l.Debugf("egress service is valid")
 	tsoperator.SetServiceCondition(svc, tsapi.EgressSvcValid, metav1.ConditionTrue, reasonEgressSvcValid, reasonEgressSvcValid, esr.clock, l)
 	return true, nil
