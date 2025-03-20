@@ -68,6 +68,10 @@ import (
 // Generate CRD API docs.
 //go:generate go run github.com/elastic/crd-ref-docs --renderer=markdown --source-path=../../k8s-operator/apis/ --config=../../k8s-operator/api-docs-config.yaml --output-path=../../k8s-operator/api.md
 
+const (
+	defaultDomain = "ts.net"
+)
+
 func main() {
 	// Required to use our client API. We're fine with the instability since the
 	// client lives in the same repo as this code.
@@ -84,6 +88,12 @@ func main() {
 		isDefaultLoadBalancer = defaultBool("OPERATOR_DEFAULT_LOAD_BALANCER", false)
 		loginServer           = strings.TrimSuffix(defaultEnv("OPERATOR_LOGIN_SERVER", ""), "/")
 		ingressClassName      = defaultEnv("OPERATOR_INGRESS_CLASS_NAME", "tailscale")
+		baseDomain            = defaultEnv("OPERATOR_DOMAIN", defaultDomain)
+		// relaxedDomainValidation can be used to only validate that the
+		// base domain and at least 1 sub domain in the FQDN of
+		// services exists. The default is to make sure that there are
+		// exactly 2 sub-domains in the FQDN.
+		relaxedDomainValidation = defaultBool("OPERATOR_RELAXED_DOMAIN_VALIDATION", false)
 	)
 
 	var opts []kzap.Opts
@@ -135,6 +145,10 @@ func main() {
 		defaultProxyClass:             defaultProxyClass,
 		loginServer:                   loginServer,
 		ingressClassName:              ingressClassName,
+		validationOpts: validationOpts{
+			baseDomain:              baseDomain,
+			relaxedDomainValidation: relaxedDomainValidation,
+		},
 	}
 	runReconcilers(rOpts)
 }
@@ -333,6 +347,7 @@ func runReconcilers(opts reconcilerOpts) {
 			tsNamespace:           opts.tailscaleNamespace,
 			clock:                 tstime.DefaultClock{},
 			defaultProxyClass:     opts.defaultProxyClass,
+			validationOpts:        opts.validationOpts,
 		})
 	if err != nil {
 		startlog.Fatalf("could not create service reconciler: %v", err)
@@ -482,11 +497,12 @@ func runReconcilers(opts reconcilerOpts) {
 		Watches(&corev1.Service{}, egressSvcFilter).
 		Watches(&tsapi.ProxyGroup{}, egressProxyGroupFilter).
 		Complete(&egressSvcsReconciler{
-			Client:      mgr.GetClient(),
-			tsNamespace: opts.tailscaleNamespace,
-			recorder:    eventRecorder,
-			clock:       tstime.DefaultClock{},
-			logger:      opts.log.Named("egress-svcs-reconciler"),
+			Client:         mgr.GetClient(),
+			tsNamespace:    opts.tailscaleNamespace,
+			recorder:       eventRecorder,
+			clock:          tstime.DefaultClock{},
+			logger:         opts.log.Named("egress-svcs-reconciler"),
+			validationOpts: opts.validationOpts,
 		})
 	if err != nil {
 		startlog.Fatalf("could not create egress Services reconciler: %v", err)
@@ -662,6 +678,18 @@ func runReconcilers(opts reconcilerOpts) {
 	}
 }
 
+type validationOpts struct {
+	baseDomain              string
+	relaxedDomainValidation bool
+}
+
+func (v validationOpts) domain() string {
+	if v.baseDomain == "" {
+		return defaultDomain
+	}
+	return v.baseDomain
+}
+
 type reconcilerOpts struct {
 	log                *zap.SugaredLogger
 	tsServer           *tsnet.Server
@@ -705,6 +733,9 @@ type reconcilerOpts struct {
 	// ingressClassName is the name of the ingress class used by reconcilers of Ingress resources. This defaults
 	// to "tailscale" but can be customised.
 	ingressClassName string
+	// validationOpts are used to control validations happening in the
+	// reconcilers
+	validationOpts validationOpts
 }
 
 // enqueueAllIngressEgressProxySvcsinNS returns a reconcile request for each
@@ -1086,9 +1117,13 @@ func serviceHandler(_ context.Context, o client.Object) []reconcile.Request {
 }
 
 // isMagicDNSName reports whether name is a full tailnet node FQDN (with or
-// without final dot).
-func isMagicDNSName(name string) bool {
-	validMagicDNSName := regexp.MustCompile(`^[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.ts\.net\.?$`)
+// without final dot). The behaviour can be controlled with the given opts.
+func isMagicDNSName(name string, opts validationOpts) bool {
+	baseDomainEscaped := strings.ReplaceAll(opts.domain(), `.`, `\.`)
+	validMagicDNSName := regexp.MustCompile(`^[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.` + baseDomainEscaped + `\.?$`)
+	if opts.relaxedDomainValidation {
+		validMagicDNSName = regexp.MustCompile(`^([a-zA-Z0-9-]+\.)+` + baseDomainEscaped + `\.?$`)
+	}
 	return validMagicDNSName.MatchString(name)
 }
 
