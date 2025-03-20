@@ -524,13 +524,6 @@ func (esr *egressSvcsReconciler) validateClusterResources(ctx context.Context, s
 		tsoperator.RemoveServiceCondition(svc, tsapi.EgressSvcConfigured)
 		return false, err
 	}
-	if !tsoperator.ProxyGroupIsReady(pg) {
-		l.Infof("ProxyGroup %s is not ready, waiting...", proxyGroupName)
-		tsoperator.SetServiceCondition(svc, tsapi.EgressSvcValid, metav1.ConditionUnknown, reasonProxyGroupNotReady, reasonProxyGroupNotReady, esr.clock, l)
-		tsoperator.RemoveServiceCondition(svc, tsapi.EgressSvcConfigured)
-		return false, nil
-	}
-
 	if violations := validateEgressService(svc, pg, esr.validationOpts); len(violations) > 0 {
 		msg := fmt.Sprintf("invalid egress Service: %s", strings.Join(violations, ", "))
 		esr.recorder.Event(svc, corev1.EventTypeWarning, "INVALIDSERVICE", msg)
@@ -539,6 +532,11 @@ func (esr *egressSvcsReconciler) validateClusterResources(ctx context.Context, s
 		tsoperator.RemoveServiceCondition(svc, tsapi.EgressSvcConfigured)
 		return false, nil
 	}
+	if !tsoperator.ProxyGroupIsReady(pg) {
+		tsoperator.SetServiceCondition(svc, tsapi.EgressSvcValid, metav1.ConditionUnknown, reasonProxyGroupNotReady, reasonProxyGroupNotReady, esr.clock, l)
+		tsoperator.RemoveServiceCondition(svc, tsapi.EgressSvcConfigured)
+	}
+
 	l.Debugf("egress service is valid")
 	tsoperator.SetServiceCondition(svc, tsapi.EgressSvcValid, metav1.ConditionTrue, reasonEgressSvcValid, reasonEgressSvcValid, esr.clock, l)
 	return true, nil

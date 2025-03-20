@@ -1379,7 +1379,6 @@ func TestTailscaledConfigfileHash(t *testing.T) {
 	})
 
 	expectReconciled(t, sr, "default", "test")
-	expectReconciled(t, sr, "default", "test")
 
 	fullName, shortName := findGenName(t, fc, "default", "test", "svc")
 	o := configOpts{

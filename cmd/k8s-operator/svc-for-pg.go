@@ -66,6 +66,8 @@ type HAServiceReconciler struct {
 	defaultTags           []string
 	operatorID            string // stableID of the operator's Tailscale device
 
+	validationOpts validationOpts
+
 	clock tstime.Clock
 
 	mu sync.Mutex // protects following
@@ -170,7 +172,7 @@ func (r *HAServiceReconciler) maybeProvision(ctx context.Context, hostname strin
 	}
 
 	// Validate Service configuration
-	if violations := validateService(svc); len(violations) > 0 {
+	if violations := validateService(svc, r.validationOpts); len(violations) > 0 {
 		msg := fmt.Sprintf("unable to provision proxy resources: invalid Service: %s", strings.Join(violations, ", "))
 		r.recorder.Event(svc, corev1.EventTypeWarning, "INVALIDSERVICE", msg)
 		r.logger.Error(msg)

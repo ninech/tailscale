@@ -136,8 +136,6 @@ type tailscaleSTSConfig struct {
 
 	proxyType string
 
-	ControlURL string
-
 	// Connector specifies a configuration of a Connector instance if that's
 	// what this StatefulSet should be created for.
 	Connector *connector
