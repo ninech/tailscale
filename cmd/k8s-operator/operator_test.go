@@ -1341,8 +1341,9 @@ func TestProxyFirewallMode(t *testing.T) {
 
 func Test_isMagicDNSName(t *testing.T) {
 	tests := []struct {
-		in   string
-		want bool
+		in             string
+		want           bool
+		validationOpts *validationOpts
 	}{
 		{
 			in:   "foo.tail4567.ts.net",
@@ -1356,10 +1357,33 @@ func Test_isMagicDNSName(t *testing.T) {
 			in:   "foo.tail4567",
 			want: false,
 		},
+		{
+			in:   "foo.ts.net",
+			want: false,
+		},
+		{
+			in:             "foo.tail4567.example.com.",
+			want:           true,
+			validationOpts: &validationOpts{baseDomain: "example.com"},
+		},
+		{
+			in:             "foo.example.com.",
+			want:           false,
+			validationOpts: &validationOpts{baseDomain: "example.com"},
+		},
+		{
+			in:             "foo.example.com.",
+			want:           true,
+			validationOpts: &validationOpts{baseDomain: "example.com", relaxedDomainValidation: true},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
-			if got := isMagicDNSName(tt.in); got != tt.want {
+			opts := validationOpts{}
+			if tt.validationOpts != nil {
+				opts = *tt.validationOpts
+			}
+			if got := isMagicDNSName(tt.in, opts); got != tt.want {
 				t.Errorf("isMagicDNSName(%q) = %v, want %v", tt.in, got, tt.want)
 			}
 		})
