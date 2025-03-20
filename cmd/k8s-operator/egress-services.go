@@ -68,10 +68,11 @@ var gaugeEgressServices = clientmetric.NewGauge(kubetypes.MetricEgressServiceCou
 // on whose proxies it should be exposed.
 type egressSvcsReconciler struct {
 	client.Client
-	logger      *zap.SugaredLogger
-	recorder    record.EventRecorder
-	clock       tstime.Clock
-	tsNamespace string
+	logger         *zap.SugaredLogger
+	recorder       record.EventRecorder
+	clock          tstime.Clock
+	tsNamespace    string
+	validationOpts validationOpts
 
 	mu   sync.Mutex           // protects following
 	svcs set.Slice[types.UID] // UIDs of all currently managed egress Services for ProxyGroup
@@ -486,7 +487,7 @@ func (esr *egressSvcsReconciler) validateClusterResources(ctx context.Context, s
 		return false, nil
 	}
 
-	if violations := validateEgressService(svc, pg); len(violations) > 0 {
+	if violations := validateEgressService(svc, pg, esr.validationOpts); len(violations) > 0 {
 		msg := fmt.Sprintf("invalid egress Service: %s", strings.Join(violations, ", "))
 		esr.recorder.Event(svc, corev1.EventTypeWarning, "INVALIDSERVICE", msg)
 		l.Info(msg)
@@ -499,8 +500,8 @@ func (esr *egressSvcsReconciler) validateClusterResources(ctx context.Context, s
 	return true, nil
 }
 
-func validateEgressService(svc *corev1.Service, pg *tsapi.ProxyGroup) []string {
-	violations := validateService(svc)
+func validateEgressService(svc *corev1.Service, pg *tsapi.ProxyGroup, opts validationOpts) []string {
+	violations := validateService(svc, opts)
 
 	// We check that only one of these two is set in the earlier validateService function.
 	if svc.Annotations[AnnotationTailnetTargetFQDN] == "" && svc.Annotations[AnnotationTailnetTargetIP] == "" {
