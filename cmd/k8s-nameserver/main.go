@@ -73,6 +73,7 @@ type nameserver struct {
 }
 
 func main() {
+	flag.Parse()
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Ensure that we watch the kube Configmap mounted at /config for
