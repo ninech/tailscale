@@ -94,6 +94,9 @@ func main() {
 		// services exists. The default is to make sure that there are
 		// exactly 2 sub-domains in the FQDN.
 		relaxedDomainValidation = defaultBool("OPERATOR_RELAXED_DOMAIN_VALIDATION", false)
+		// noFqdnDotAppend prevents the dot ('.') appending to the FQDN
+		// of egress proxy services
+		noFqdnDotAppend = defaultBool("OPERATOR_NO_FQDN_DOT_APPEND", false)
 	)
 
 	var opts []kzap.Opts
@@ -149,6 +152,7 @@ func main() {
 			baseDomain:              baseDomain,
 			relaxedDomainValidation: relaxedDomainValidation,
 		},
+		noFqdnDotAppend: noFqdnDotAppend,
 	}
 	runReconcilers(rOpts)
 }
@@ -348,6 +352,7 @@ func runReconcilers(opts reconcilerOpts) {
 			clock:                 tstime.DefaultClock{},
 			defaultProxyClass:     opts.defaultProxyClass,
 			validationOpts:        opts.validationOpts,
+			noFqdnDotAppend:       opts.noFqdnDotAppend,
 		})
 	if err != nil {
 		startlog.Fatalf("could not create service reconciler: %v", err)
@@ -736,6 +741,9 @@ type reconcilerOpts struct {
 	// validationOpts are used to control validations happening in the
 	// reconcilers
 	validationOpts validationOpts
+	// noFqdnDotAppend prevents the addition of a dot ('.") to the end of
+	// destination FQDNs in egress proxies
+	noFqdnDotAppend bool
 }
 
 // enqueueAllIngressEgressProxySvcsinNS returns a reconcile request for each
