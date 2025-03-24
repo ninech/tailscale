@@ -67,6 +67,8 @@ type ServiceReconciler struct {
 	defaultProxyClass string
 
 	validationOpts validationOpts
+
+	noFqdnDotAppend bool
 }
 
 var (
@@ -291,7 +293,7 @@ func (a *ServiceReconciler) maybeProvision(ctx context.Context, logger *zap.Suga
 		gaugeEgressProxies.Set(int64(a.managedEgressProxies.Len()))
 	} else if fqdn := svc.Annotations[AnnotationTailnetTargetFQDN]; fqdn != "" {
 		fqdn := svc.Annotations[AnnotationTailnetTargetFQDN]
-		if !strings.HasSuffix(fqdn, ".") {
+		if !strings.HasSuffix(fqdn, ".") && !a.noFqdnDotAppend {
 			fqdn = fqdn + "."
 		}
 		sts.TailnetTargetFQDN = fqdn
