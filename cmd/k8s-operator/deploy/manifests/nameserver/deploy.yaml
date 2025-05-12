@@ -18,6 +18,11 @@ spec:
       containers:
       - imagePullPolicy: IfNotPresent
         name: nameserver
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         ports:
         - name: tcp
           protocol: TCP
