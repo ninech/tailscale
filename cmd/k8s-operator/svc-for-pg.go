@@ -820,7 +820,7 @@ func (r *HAServiceReconciler) validateService(ctx context.Context, svc *corev1.S
 		errs = append(errs, fmt.Errorf("ProxyGroup %q is of type %q but must be of type %q",
 			pg.Name, pg.Spec.Type, tsapi.ProxyGroupTypeIngress))
 	}
-	if violations := validateService(svc); len(violations) > 0 {
+	if violations := validateService(svc, validationOpts{}); len(violations) > 0 {
 		errs = append(errs, fmt.Errorf("invalid Service: %s", strings.Join(violations, ", ")))
 	}
 	svcList := &corev1.ServiceList{}
