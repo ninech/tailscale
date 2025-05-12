@@ -6,11 +6,15 @@
 package main
 
 import (
+	"context"
 	"net"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/miekg/dns"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 	"tailscale.com/util/dnsname"
 )
 
@@ -187,6 +191,33 @@ func TestResetRecords(t *testing.T) {
 			ns := &nameserver{
 				ip4:          tt.hasIp4,
 				configReader: func() ([]byte, error) { return tt.config, nil },
+			}
+			if err := ns.resetRecords(); err == nil == tt.wantsErr {
+				t.Errorf("resetRecords() returned err: %v, wantsErr: %v", err, tt.wantsErr)
+			}
+			if diff := cmp.Diff(ns.ip4, tt.wantsIp4); diff != "" {
+				t.Fatalf("unexpected nameserver.ip4 contents (-got +want): \n%s", diff)
+			}
+		})
+		t.Run(tt.name+" (direct access)", func(t *testing.T) {
+			client := fake.NewSimpleClientset(&corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      configMapName,
+					Namespace: configMapDefaultNamespace,
+				},
+				Data: map[string]string{
+					configMapKey: string(tt.config),
+				},
+			})
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			_, reader, err := watchConfigMap(ctx, client, configMapName, configMapDefaultNamespace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ns := &nameserver{
+				ip4:          tt.hasIp4,
+				configReader: configMapCacheReader(reader),
 			}
 			if err := ns.resetRecords(); err == nil == tt.wantsErr {
 				t.Errorf("resetRecords() returned err: %v, wantsErr: %v", err, tt.wantsErr)
