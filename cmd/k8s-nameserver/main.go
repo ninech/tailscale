@@ -490,7 +490,9 @@ func configMapCacheReader(lister listersv1.ConfigMapLister) configReaderFunc {
 		if data, exists := cm.Data[configMapKey]; exists {
 			return []byte(data), nil
 		}
-		return nil, fmt.Errorf("configMap key %q does not exist", configMapKey)
+		// if the configMap is empty we need to return `nil` which will
+		// be handled by the caller specifically
+		return nil, nil
 	}
 }
 
