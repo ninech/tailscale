@@ -8,5 +8,5 @@ subjects:
     namespace: tailscale 
 roleRef:
   kind: Role
-  name: configmap-watcher
+  name: dnsrecords-watcher
   apiGroup: rbac.authorization.k8s.io
