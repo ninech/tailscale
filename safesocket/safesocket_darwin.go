@@ -102,7 +102,7 @@ func SetCredentials(token string, port int) {
 
 // InitListenerDarwin initializes the listener for the CLI commands
 // and localapi HTTP server and sets the port/token.  This will override
-// any credentials set explicitly via SetCredentials().  Calling this mulitple times
+// any credentials set explicitly via SetCredentials().  Calling this multiple times
 // has no effect.  The listener and it's corresponding token/port is initialized only once.
 func InitListenerDarwin(sharedDir string) (*net.Listener, error) {
 	ssd.mu.Lock()

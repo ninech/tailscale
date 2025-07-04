@@ -164,6 +164,7 @@ func shouldRunCLI() bool {
 		return false
 	}
 	if len(os.Args) > 0 && filepath.Base(os.Args[0]) == "tailscale" {
+		// nolint:misspell
 		// The binary was named (or hardlinked) as "tailscale".
 		return true
 	}

@@ -297,6 +297,7 @@ write:
 					break write
 				}
 			case <-t.requestKex:
+				// nolint:revive
 				break
 			}
 

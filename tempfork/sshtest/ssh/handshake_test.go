@@ -1005,6 +1005,7 @@ func TestStrictKEXMixed(t *testing.T) {
 	case err = <-readOneFailure:
 		t.Fatalf("server readOnePacket failed: %s", err)
 	case request = <-transport.startKex:
+		// nolint:revive
 		break
 	}
 
