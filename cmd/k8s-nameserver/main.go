@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -19,16 +20,38 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/miekg/dns"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	listersv1 "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	operatorutils "tailscale.com/k8s-operator"
 	"tailscale.com/util/dnsname"
 )
 
+var (
+	// domain is the DNS domain that this nameserver has registered a handler for.
+	domain     = flag.String("domain", "ts.net", "the DNS domain to serve records for")
+	updateMode = flag.String(
+		"update-mode",
+		mountAccessUpdateMode,
+		fmt.Sprintf(
+			"how to detect changes to the configMap which contains the DNS entries.\n"+
+				"%q watches the mounted configMap for changes.\n"+
+				"%q watches the configMap directly via the Kubernetes API.",
+			mountAccessUpdateMode,
+			directAccessUpdateMode,
+		),
+	)
+)
+
 const (
-	// tsNetDomain is the domain that this DNS nameserver has registered a handler for.
-	tsNetDomain = "ts.net"
 	// addr is the the address that the UDP and TCP listeners will listen on.
 	addr = ":1053"
 
@@ -37,10 +60,31 @@ const (
 	// /config is the only supported way for configuring this nameserver.
 	defaultDNSConfigDir    = "/config"
 	kubeletMountedConfigLn = "..data"
+
+	// configMapName is the name of the configMap which needs to be watched
+	// for changes when using the non-mount update mode.
+	configMapName = "dnsrecords"
+	// configMapKey is the configMap key which contains the DNS data
+	configMapKey = "records.json"
+
+	// the update modes define how changes to the configMap are detected.
+	// Either by watching the mounted file (might be slower due to the time
+	// needed for syncing) or by watching the configMap directly (needs
+	// more permissions for the service account the k8s-namesever runs
+	// with).
+	directAccessUpdateMode = "direct-access"
+	mountAccessUpdateMode  = "mount"
+
+	// configMapDefaultNamespace sets the default namespace for reading the
+	// configMap if the env variable POD_NAMESPACE is not set. Otherwise
+	// the content of the POD_NAMESPACE env variable determines where to
+	// read the configMap from. This only matters when using direct access
+	// mode for updates.
+	configMapDefaultNamespace = "tailscale"
 )
 
 // nameserver is a simple nameserver that responds to DNS queries for A records
-// for ts.net domain names over UDP or TCP. It serves DNS responses from
+// for the names of the given domain over UDP or TCP. It serves DNS responses from
 // in-memory IPv4 host records. It is intended to be deployed on Kubernetes with
 // a ConfigMap mounted at /config that should contain the host records. It
 // dynamically reconfigures its in-memory mappings as the contents of the
@@ -49,7 +93,7 @@ type nameserver struct {
 	// configReader returns the latest desired configuration (host records)
 	// for the nameserver. By default it gets set to a reader that reads
 	// from a Kubernetes ConfigMap mounted at /config, but this can be
-	// overridden in tests.
+	// overridden.
 	configReader configReaderFunc
 	// configWatcher is a watcher that returns an event when the desired
 	// configuration has changed and the nameserver should update the
@@ -63,26 +107,31 @@ type nameserver struct {
 }
 
 func main() {
+	flag.Parse()
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Ensure that we watch the kube Configmap mounted at /config for
-	// nameserver configuration updates and send events when updates happen.
-	c := ensureWatcherForKubeConfigMap(ctx)
+	if !validUpdateMode(*updateMode) {
+		log.Fatalf("non valid update mode: %q", *updateMode)
+	}
 
+	reader, watcher, err := configMapReaderAndWatcher(ctx, *updateMode)
+	if err != nil {
+		log.Fatalf("can not setup configMap reader: %v", err)
+	}
 	ns := &nameserver{
-		configReader:  configMapConfigReader,
-		configWatcher: c,
+		configReader:  reader,
+		configWatcher: watcher,
 	}
 
 	// Ensure that in-memory records get set up to date now and will get
 	// reset when the configuration changes.
 	ns.runRecordsReconciler(ctx)
 
-	// Register a DNS server handle for ts.net domain names. Not having a
+	// Register a DNS server handle for names of the domain. Not having a
 	// handle registered for any other domain names is how we enforce that
-	// this nameserver can only be used for ts.net domains - querying any
+	// this nameserver can only be used for the given domain - querying any
 	// other domain names returns Rcode Refused.
-	dns.HandleFunc(tsNetDomain, ns.handleFunc())
+	dns.HandleFunc(*domain, ns.handleFunc())
 
 	// Listen for DNS queries over UDP and TCP.
 	udpSig := make(chan os.Signal)
@@ -112,7 +161,7 @@ func (n *nameserver) handleFunc() func(w dns.ResponseWriter, r *dns.Msg) {
 	h := func(w dns.ResponseWriter, r *dns.Msg) {
 		m := new(dns.Msg)
 		defer func() {
-			w.WriteMsg(m)
+			_ = w.WriteMsg(m)
 		}()
 		if len(r.Question) < 1 {
 			log.Print("[unexpected] nameserver received a request with no questions")
@@ -135,7 +184,7 @@ func (n *nameserver) handleFunc() func(w dns.ResponseWriter, r *dns.Msg) {
 			m.RecursionAvailable = false
 
 			ips := n.lookupIP4(fqdn)
-			if ips == nil || len(ips) == 0 {
+			if len(ips) == 0 {
 				// As we are the authoritative nameserver for MagicDNS
 				// names, if we do not have a record for this MagicDNS
 				// name, it does not exist.
@@ -231,7 +280,7 @@ func (n *nameserver) resetRecords() error {
 		log.Printf("error reading nameserver's configuration: %v", err)
 		return err
 	}
-	if dnsCfgBytes == nil || len(dnsCfgBytes) < 1 {
+	if len(dnsCfgBytes) < 1 {
 		log.Print("nameserver's configuration is empty, any in-memory records will be unset")
 		n.mu.Lock()
 		n.ip4 = make(map[dnsname.FQDN][]net.IP)
@@ -284,7 +333,7 @@ func listenAndServe(net, addr string, shutdown chan os.Signal) {
 	go func() {
 		<-shutdown
 		log.Printf("shutting down server for %s", net)
-		s.Shutdown()
+		_ = s.Shutdown()
 	}()
 	log.Printf("listening for %s queries on %s", net, addr)
 	if err := s.ListenAndServe(); err != nil {
@@ -292,10 +341,86 @@ func listenAndServe(net, addr string, shutdown chan os.Signal) {
 	}
 }
 
-// ensureWatcherForKubeConfigMap sets up a new file watcher for the ConfigMap
+func getClientset() (*kubernetes.Clientset, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load in-cluster config: %w", err)
+	}
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create clientset: %w", err)
+	}
+	return clientset, nil
+}
+
+func getConfigMapNamespace() string {
+	namespace := configMapDefaultNamespace
+	if ns := os.Getenv("POD_NAMESPACE"); ns != "" {
+		namespace = ns
+	}
+	return namespace
+}
+
+func configMapReaderAndWatcher(ctx context.Context, updateMode string) (configReaderFunc, chan string, error) {
+	switch updateMode {
+	case mountAccessUpdateMode:
+		return configMapMountedReader, watchMountedConfigMap(ctx), nil
+	case directAccessUpdateMode:
+		cs, err := getClientset()
+		if err != nil {
+			return nil, nil, err
+		}
+		watcherChannel, cacheReader, err := watchConfigMap(ctx, cs, configMapName, getConfigMapNamespace())
+		if err != nil {
+			return nil, nil, err
+		}
+		return configMapCacheReader(cacheReader), watcherChannel, nil
+	default:
+		return nil, nil, fmt.Errorf("no implementation for update mode %q", updateMode)
+	}
+}
+
+// watchConfigMap watches the configMap identified by the given name and
+// namespace. It emits a message in the returned channel whenever the configMap
+// updated. It also returns a configMapLister which allows to access the cached objects
+// retrieved by the API server.
+func watchConfigMap(ctx context.Context, cs kubernetes.Interface, configMapName, configMapNamespace string) (chan string, listersv1.ConfigMapLister, error) {
+	ch := make(chan string)
+
+	fieldSelector := fields.OneTermEqualSelector("metadata.name", configMapName).String()
+	factory := informers.NewSharedInformerFactoryWithOptions(
+		cs,
+		// we resync every hour to account for missed watches
+		time.Hour,
+		informers.WithNamespace(configMapNamespace),
+		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+			options.FieldSelector = fieldSelector
+		}),
+	)
+	cmFactory := factory.Core().V1().ConfigMaps()
+	_, _ = cmFactory.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj any) {
+			ch <- fmt.Sprintf("ConfigMap %s added or synced", configMapName)
+		},
+		UpdateFunc: func(oldObj, newObj any) {
+			ch <- fmt.Sprintf("ConfigMap %s updated", configMapName)
+		},
+	})
+	factory.Start(ctx.Done())
+	// Wait for cache sync
+	log.Println("waiting for configMap cache to sync")
+	if !cache.WaitForCacheSync(ctx.Done(), cmFactory.Informer().HasSynced) {
+		return nil, nil, fmt.Errorf("configMap cache did not sync successful")
+	}
+	log.Println("configMap cache successfully synced")
+
+	return ch, cmFactory.Lister(), nil
+}
+
+// watchMountedConfigMap sets up a new file watcher for the ConfigMap
 // that's expected to be mounted at /config. Returns a channel that receives an
 // event every time the contents get updated.
-func ensureWatcherForKubeConfigMap(ctx context.Context) chan string {
+func watchMountedConfigMap(ctx context.Context) chan string {
 	c := make(chan string)
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -307,7 +432,9 @@ func ensureWatcherForKubeConfigMap(ctx context.Context) chan string {
 	// https://github.com/kubernetes/kubernetes/blob/v1.28.1/pkg/volume/util/atomic_writer.go#L39-L61
 	toWatch := filepath.Join(defaultDNSConfigDir, kubeletMountedConfigLn)
 	go func() {
-		defer watcher.Close()
+		defer func() {
+			_ = watcher.Close()
+		}()
 		log.Printf("starting file watch for %s", defaultDNSConfigDir)
 		for {
 			select {
@@ -354,9 +481,24 @@ func ensureWatcherForKubeConfigMap(ctx context.Context) chan string {
 // configReaderFunc is a function that returns the desired nameserver configuration.
 type configReaderFunc func() ([]byte, error)
 
-// configMapConfigReader reads the desired nameserver configuration from a
+func configMapCacheReader(lister listersv1.ConfigMapLister) configReaderFunc {
+	return func() ([]byte, error) {
+		cm, err := lister.ConfigMaps(getConfigMapNamespace()).Get(configMapName)
+		if err != nil {
+			return nil, fmt.Errorf("can not read configMap: %w", err)
+		}
+		if data, exists := cm.Data[configMapKey]; exists {
+			return []byte(data), nil
+		}
+		// if the configMap is empty we need to return `nil` which will
+		// be handled by the caller specifically
+		return nil, nil
+	}
+}
+
+// configMapMountedReader reads the desired nameserver configuration from a
 // records.json file in a ConfigMap mounted at /config.
-var configMapConfigReader configReaderFunc = func() ([]byte, error) {
+var configMapMountedReader configReaderFunc = func() ([]byte, error) {
 	if contents, err := os.ReadFile(filepath.Join(defaultDNSConfigDir, operatorutils.DNSRecordsCMKey)); err == nil {
 		return contents, nil
 	} else if os.IsNotExist(err) {
@@ -376,4 +518,13 @@ func (n *nameserver) lookupIP4(fqdn dnsname.FQDN) []net.IP {
 	defer n.mu.Unlock()
 	f := n.ip4[fqdn]
 	return f
+}
+
+func validUpdateMode(m string) bool {
+	switch m {
+	case directAccessUpdateMode, mountAccessUpdateMode:
+		return true
+	default:
+		return false
+	}
 }

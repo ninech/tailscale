@@ -22,7 +22,7 @@ const (
 	defaultTailnet = "-"
 )
 
-func newTSClient(ctx context.Context, clientIDPath, clientSecretPath, loginServer string) (tsClient, error) {
+func newTSClient(ctx context.Context, clientIDPath, clientSecretPath, loginServer, customTokenURL string) (tsClient, error) {
 	clientID, err := os.ReadFile(clientIDPath)
 	if err != nil {
 		return nil, fmt.Errorf("error reading client ID %q: %w", clientIDPath, err)
@@ -35,6 +35,9 @@ func newTSClient(ctx context.Context, clientIDPath, clientSecretPath, loginServe
 	tokenURL := fmt.Sprintf("%s%s", ipn.DefaultControlURL, tokenURLPath)
 	if loginServer != "" {
 		tokenURL = fmt.Sprintf("%s%s", loginServer, tokenURLPath)
+	}
+	if customTokenURL != "" {
+		tokenURL = customTokenURL
 	}
 	credentials := clientcredentials.Config{
 		ClientID:     string(clientID),

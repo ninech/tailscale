@@ -68,6 +68,10 @@ type ServiceReconciler struct {
 	clock tstime.Clock
 
 	defaultProxyClass string
+
+	validationOpts validationOpts
+
+	noFqdnDotAppend bool
 }
 
 var (
@@ -223,7 +227,7 @@ func (a *ServiceReconciler) maybeProvision(ctx context.Context, logger *zap.Suga
 		tsoperator.SetServiceCondition(svc, tsapi.ProxyReady, metav1.ConditionFalse, reasonProxyInvalid, msg, a.clock, logger)
 		return nil
 	}
-	if violations := validateService(svc); len(violations) > 0 {
+	if violations := validateService(svc, a.validationOpts); len(violations) > 0 {
 		msg := fmt.Sprintf("unable to provision proxy resources: invalid Service: %s", strings.Join(violations, ", "))
 		a.recorder.Event(svc, corev1.EventTypeWarning, "INVALIDSERVICE", msg)
 		a.logger.Error(msg)
@@ -293,7 +297,7 @@ func (a *ServiceReconciler) maybeProvision(ctx context.Context, logger *zap.Suga
 		gaugeEgressProxies.Set(int64(a.managedEgressProxies.Len()))
 	} else if fqdn := svc.Annotations[AnnotationTailnetTargetFQDN]; fqdn != "" {
 		fqdn := svc.Annotations[AnnotationTailnetTargetFQDN]
-		if !strings.HasSuffix(fqdn, ".") {
+		if !strings.HasSuffix(fqdn, ".") && !a.noFqdnDotAppend {
 			fqdn = fqdn + "."
 		}
 		sts.TailnetTargetFQDN = fqdn
@@ -369,13 +373,13 @@ func (a *ServiceReconciler) maybeProvision(ctx context.Context, logger *zap.Suga
 	return nil
 }
 
-func validateService(svc *corev1.Service) []string {
+func validateService(svc *corev1.Service, opts validationOpts) []string {
 	violations := make([]string, 0)
 	if svc.Annotations[AnnotationTailnetTargetFQDN] != "" && svc.Annotations[AnnotationTailnetTargetIP] != "" {
 		violations = append(violations, fmt.Sprintf("only one of annotations %s and %s can be set", AnnotationTailnetTargetIP, AnnotationTailnetTargetFQDN))
 	}
 	if fqdn := svc.Annotations[AnnotationTailnetTargetFQDN]; fqdn != "" {
-		if !isMagicDNSName(fqdn) {
+		if !isMagicDNSName(fqdn, opts) {
 			violations = append(violations, fmt.Sprintf("invalid value of annotation %s: %q does not appear to be a valid MagicDNS name", AnnotationTailnetTargetFQDN, fqdn))
 		}
 	}

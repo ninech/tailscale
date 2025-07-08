@@ -19,6 +19,7 @@ import (
 	xslices "golang.org/x/exp/slices"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -168,12 +169,33 @@ func nameserverResourceLabels(name, namespace string) map[string]string {
 	return labels
 }
 
-func (a *NameserverReconciler) maybeProvision(ctx context.Context, tsDNSCfg *tsapi.DNSConfig, logger *zap.SugaredLogger) error {
-	labels := nameserverResourceLabels(tsDNSCfg.Name, a.tsNamespace)
+// mergeEnvVars merges `source` with `other` while prioritizing the values from
+// `other` if there a duplicate environment variables found.
+func mergeEnvVars(source []corev1.EnvVar, other []corev1.EnvVar) []corev1.EnvVar {
+	merged := make([]corev1.EnvVar, len(other))
+	copy(merged, source)
+
+	// create a map to track existing env var names in `other`
+	existing := make(map[string]bool, len(other))
+	for _, env := range other {
+		existing[env.Name] = true
+	}
+	// now we add the missing env variable names from source if they do not
+	// already exist
+	for _, env := range source {
+		if !existing[env.Name] {
+			merged = append(merged, env)
+		}
+	}
+	return merged
+}
+
+func (a *NameserverReconciler) maybeProvision(ctx context.Context, tsDNSCfg *tsapi.DNSConfig, _ *zap.SugaredLogger) error {
+	resourceLabels := nameserverResourceLabels(tsDNSCfg.Name, a.tsNamespace)
 	dCfg := &deployConfig{
 		ownerRefs: []metav1.OwnerReference{*metav1.NewControllerRef(tsDNSCfg, tsapi.SchemeGroupVersion.WithKind("DNSConfig"))},
 		namespace: a.tsNamespace,
-		labels:    labels,
+		labels:    resourceLabels,
 		imageRepo: defaultNameserverImageRepo,
 		imageTag:  defaultNameserverImageTag,
 	}
@@ -183,7 +205,13 @@ func (a *NameserverReconciler) maybeProvision(ctx context.Context, tsDNSCfg *tsa
 	if tsDNSCfg.Spec.Nameserver.Image != nil && tsDNSCfg.Spec.Nameserver.Image.Tag != "" {
 		dCfg.imageTag = tsDNSCfg.Spec.Nameserver.Image.Tag
 	}
-	for _, deployable := range []deployable{saDeployable, deployDeployable, svcDeployable, cmDeployable} {
+	if len(tsDNSCfg.Spec.Nameserver.Cmd) > 0 {
+		dCfg.cmd = tsDNSCfg.Spec.Nameserver.Cmd
+	}
+	dCfg.env = tsDNSCfg.Spec.Nameserver.Env
+	dCfg.podLabels = tsDNSCfg.Spec.Nameserver.PodLabels
+
+	for _, deployable := range []deployable{saDeployable, roleDeployable, rolebindingDeployable, deployDeployable, svcDeployable, cmDeployable} {
 		if err := deployable.updateObj(ctx, dCfg, a.Client); err != nil {
 			return fmt.Errorf("error reconciling %s: %w", deployable.kind, err)
 		}
@@ -211,6 +239,9 @@ type deployConfig struct {
 	imageRepo string
 	imageTag  string
 	labels    map[string]string
+	podLabels map[string]string
+	cmd       []string
+	env       []corev1.EnvVar
 	ownerRefs []metav1.OwnerReference
 	namespace string
 }
@@ -224,6 +255,10 @@ var (
 	saYaml []byte
 	//go:embed deploy/manifests/nameserver/svc.yaml
 	svcYaml []byte
+	//go:embed deploy/manifests/nameserver/role.yaml
+	roleYaml []byte
+	//go:embed deploy/manifests/nameserver/rolebinding.yaml
+	roleBindingYaml []byte
 
 	deployDeployable = deployable{
 		kind: "Deployment",
@@ -236,6 +271,17 @@ var (
 			d.ObjectMeta.Namespace = cfg.namespace
 			d.ObjectMeta.Labels = cfg.labels
 			d.ObjectMeta.OwnerReferences = cfg.ownerRefs
+			if d.Spec.Template.Labels == nil {
+				d.Spec.Template.Labels = make(map[string]string)
+			}
+			for key, value := range cfg.podLabels {
+				d.Spec.Template.Labels[key] = value
+			}
+			if len(cfg.cmd) > 0 {
+				d.Spec.Template.Spec.Containers[0].Command = cfg.cmd
+			}
+			d.Spec.Template.Spec.Containers[0].Env = mergeEnvVars(d.Spec.Template.Spec.Containers[0].Env, cfg.env)
+
 			updateF := func(oldD *appsv1.Deployment) {
 				oldD.Spec = d.Spec
 			}
@@ -282,6 +328,37 @@ var (
 			cm.ObjectMeta.OwnerReferences = cfg.ownerRefs
 			cm.ObjectMeta.Namespace = cfg.namespace
 			_, err := createOrUpdate[corev1.ConfigMap](ctx, kubeClient, cfg.namespace, cm, func(cm *corev1.ConfigMap) {})
+			return err
+		},
+	}
+	roleDeployable = deployable{
+		kind: "Role",
+		updateObj: func(ctx context.Context, cfg *deployConfig, kubeClient client.Client) error {
+			role := new(rbacv1.Role)
+			if err := yaml.Unmarshal(roleYaml, &role); err != nil {
+				return fmt.Errorf("error unmarshalling role yaml: %w", err)
+			}
+			role.ObjectMeta.Labels = cfg.labels
+			role.ObjectMeta.OwnerReferences = cfg.ownerRefs
+			role.ObjectMeta.Namespace = cfg.namespace
+			_, err := createOrUpdate[rbacv1.Role](ctx, kubeClient, cfg.namespace, role, func(*rbacv1.Role) {})
+			return err
+		},
+	}
+	rolebindingDeployable = deployable{
+		kind: "RoleBinding",
+		updateObj: func(ctx context.Context, cfg *deployConfig, kubeClient client.Client) error {
+			roleBinding := new(rbacv1.RoleBinding)
+			if err := yaml.Unmarshal(roleBindingYaml, &roleBinding); err != nil {
+				return fmt.Errorf("error unmarshalling rolebinding yaml: %w", err)
+			}
+			roleBinding.ObjectMeta.Labels = cfg.labels
+			roleBinding.ObjectMeta.OwnerReferences = cfg.ownerRefs
+			roleBinding.ObjectMeta.Namespace = cfg.namespace
+			if len(roleBinding.Subjects) > 0 {
+				roleBinding.Subjects[0].Namespace = cfg.namespace
+			}
+			_, err := createOrUpdate[rbacv1.RoleBinding](ctx, kubeClient, cfg.namespace, roleBinding, func(*rbacv1.RoleBinding) {})
 			return err
 		},
 	}
