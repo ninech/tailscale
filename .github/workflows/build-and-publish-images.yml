@@ -28,7 +28,7 @@ jobs:
           TAGS: ${{ github.ref_name }}
         run: |
           echo "Building and publishing k8s-operator to ${REPO} with tags ${TAGS}"
-          TAGS="${TAGS}" REPOS=${REPO} PLATFORM=${PLATFORM} PUSH=true TARGET=operator ./build_docker.sh 
+          TAGS="${TAGS}" REPOS=${REPO} PLATFORM=${PLATFORM} PUSH=true TARGET=k8s-operator ./build_docker.sh 
       - name: Build and publish nameserver image
         env:
           REPO: ghcr.io/${{ github.repository_owner }}/tailscale-k8s-nameserver
