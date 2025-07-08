@@ -219,12 +219,11 @@ jobs:
         key: ${{ runner.os }}-${{ matrix.goarch }}-${{ matrix.buildflags }}-go-${{ matrix.shard }}-${{ hashFiles('**/go.sum') }}-${{ github.job }}-${{ github.run_id }}
 
   windows:
+    # we disable the windows tests as we don't have access to tailscale's private CI runners
+    if: false
     permissions:
-      id-token: write # This is required for requesting the GitHub action identity JWT that can auth to cigocached
-      contents: read # This is required for actions/checkout
-    # ci-windows-github-1 is a 2022 GitHub-managed runner in our org with 8 cores
-    # and 32 GB of RAM. It is connected to a private Azure VNet that hosts cigocached.
-    # https://github.com/organizations/tailscale/settings/actions/github-hosted-runners/5
+      id-token: write
+      contents: read
     runs-on: ci-windows-github-1
     needs: gomod-cache
     name: Windows (${{ matrix.name || matrix.shard}})
@@ -367,7 +366,10 @@ jobs:
     needs: gomod-cache
     runs-on: ["self-hosted", "linux", "vm"]
     # VM tests run with some privileges, don't let them run on 3p PRs.
-    if: github.repository == 'tailscale/tailscale'
+    # if: github.repository == 'tailscale/tailscale'
+    #
+    # we disable VM tests
+    if: false
     steps:
     - name: checkout
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -947,7 +949,6 @@ jobs:
     needs:
       - android
       - test
-      - windows
       - cross
       - ios
       - wasm
@@ -995,9 +996,6 @@ jobs:
     needs:
       - check_mergeability_strict
       - test
-      - windows
-      - macos
-      - vm
       - wasm
       - fuzz
       - race-root-integration
