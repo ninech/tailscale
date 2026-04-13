@@ -3,13 +3,13 @@ kind: Deployment
 metadata:
   name: nameserver 
 spec:
-  replicas: 1
+  replicas: 2
   revisionHistoryLimit: 5
   selector:
     matchLabels:
       app: nameserver
   strategy:
-    type: Recreate
+    type: RollingUpdate
   template:
     metadata:
       labels:
@@ -33,6 +33,13 @@ spec:
         volumeMounts:
         - name: dnsrecords
           mountPath: /config
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: nameserver
       restartPolicy: Always
       serviceAccount: nameserver
       serviceAccountName: nameserver
