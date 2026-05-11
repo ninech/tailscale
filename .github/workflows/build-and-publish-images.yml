@@ -42,4 +42,18 @@ jobs:
           TAGS: ${{ github.ref_name }}
         run: |
           echo "Building and publishing tailscale client to ${REPO} with tags ${TAGS}"
-          TAGS="${TAGS}" REPOS=${REPO} PLATFORM=${PLATFORM} PUSH=true TARGET=client ./build_docker.sh 
+          TAGS="${TAGS}" REPOS=${REPO} PLATFORM=${PLATFORM} PUSH=true TARGET=client ./build_docker.sh
+      - name: Build and publish derper image
+        env:
+          REPO: ghcr.io/${{ github.repository_owner }}/derper
+          TAGS: ${{ github.ref_name }}
+        run: |
+          echo "Building and publishing derper to ${REPO} with tags ${TAGS}"
+          TAGS="${TAGS}" REPOS=${REPO} PLATFORM=${PLATFORM} PUSH=true TARGET=derper ./build_docker.sh
+      - name: Build and publish derpprobe image
+        env:
+          REPO: ghcr.io/${{ github.repository_owner }}/derpprobe
+          TAGS: ${{ github.ref_name }}
+        run: |
+          echo "Building and publishing derpprobe to ${REPO} with tags ${TAGS}"
+          TAGS="${TAGS}" REPOS=${REPO} PLATFORM=${PLATFORM} PUSH=true TARGET=derpprobe ./build_docker.sh
